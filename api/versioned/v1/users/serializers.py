@@ -1,17 +1,29 @@
 import logging
+from importlib import import_module
 
+from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate, password_validation as validators
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import ValidationError as django_validation_error
 
-from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework import serializers, status
+from rest_framework.exceptions import ValidationError, NotAuthenticated, AuthenticationFailed
 
-from api.bases.users.models import Profile, Image
+from api.bases.users.models import Profile, Image, User, ExpiringToken
 from common.exceptions import ConflictException
 
 logger = logging.getLogger('django.server')
+
+
+def get_username_field():
+    try:
+        username_field = get_user_model().USERNAME_FIELD
+    except:
+        username_field = 'username'
+
+    return username_field
+
 
 class ImageSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
@@ -135,3 +147,75 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         exclude = ('password',)
+
+
+
+class PayLoadSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    expiry = serializers.IntegerField()
+
+
+
+class UserLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True)
+    force_login = serializers.BooleanField(write_only=True, required=False, default=False)
+    user = UserSerializer(read_only=True)
+    payload = PayLoadSerializer(read_only=True)
+
+    class Meta:
+        error_status_codes = {
+            status.HTTP_400_BAD_REQUEST: None,
+            status.HTTP_401_UNAUTHORIZED: None,
+            status.HTTP_403_FORBIDDEN: None,
+            status.HTTP_409_CONFLICT: None
+        }
+
+    def __init__(self, *args, **kwargs):
+        engine = import_module(settings.SESSION_ENGINE)
+        self.SessionStore = engine.SessionStore
+        super(UserLoginSerializer, self).__init__(*args, **kwargs)
+
+    @property
+    def username_field(self):
+        return get_username_field()
+
+    def get_credentials(self, attrs):
+        return {
+            'username': attrs.get(self.username_field) or User.get_hash(attrs.get('password').encode('utf-8')),
+            'password': attrs.get('password')
+        }
+
+    def validate(self, attrs):
+        credentials = self.get_credentials(attrs)
+
+        request = self.context.get('_request')
+        force_login = attrs.get('force_login')
+        try:
+            user = authenticate(**credentials, request=request)
+        except User.MultipleObjectsReturned:
+            raise ConflictException(ConflictException(code='DuplicateAccount').get_full_details())
+
+        if user:
+            if not user.is_active:
+                raise NotAuthenticated(NotAuthenticated().get_full_details())
+
+            token, is_new = ExpiringToken.objects.get_or_create(user=user)
+
+            # 1. 토큰이 만료된경우는 재접속으로 판단.
+            # 2. 강제 토큰 갱신의 경우도 재접속으로 판단.
+            # 3. 만료되지 않았는데 유저가 접속중이면 동시접속으로 판단 - 제거(주석 처리)
+            if token.expired() or force_login:
+                token.delete()
+                token = ExpiringToken.objects.create(user=user)
+            # elif user.is_online:
+            #     raise ConflictException(ConflictException(code='AlreadyOnline').get_full_details())
+
+            return {
+                'payload': {'token': token.key, 'expiry': token.expiry},
+                'user': user
+            }
+        else:
+            raise AuthenticationFailed(AuthenticationFailed().get_full_details())
+
+        return attrs

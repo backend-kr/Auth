@@ -19,20 +19,12 @@ from django.apps import apps
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.template.loader import render_to_string
-from django.template import Template as DjangoTemplate, Context
 from django.urls import reverse
 
 from rest_framework.authtoken.models import Token
-from rest_framework.validators import ValidationError
-# from auditlog.registry import auditlog
-
-# from common.models import JSONField, ListField
-# from common.algorithms.seed_cbc import SeedCBC
 
 from api.bases.users.choices import (
     ProfileChoices,
-    VendorPropertyChoices,
     ActivationLogChoices
 )
 

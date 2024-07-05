@@ -42,6 +42,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'rest_auth',
+    'rest_auth.registration',
+    'django_filters',
     'axes',
     'rest_framework',
     'drf_yasg',
@@ -112,7 +115,38 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.JSONParser',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'common.authentication.auth.ExpiringTokenAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
+        'common.authentication.auth.BasicAuthentication',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'common.pagenator.StandardPagination',
+    'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend',),
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'DEFAULT_THROTTLE_RATES': {
+        'sms_cert': '5/minute',
+        'account_cert': '5/minute',
+        'validate_email': '5/minute',
+    }
+}
 
+
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+REST_AUTH_TOKEN_MODEL = "api.bases.users.models.ExpiringToken"
+REST_AUTH_SERIALIZERS = {
+    'TOKEN_SERIALIZER': "api.versioned.v1.users.social.serializers.TokenSerializer"
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
