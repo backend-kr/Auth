@@ -1,0 +1,6 @@
+.git
+.gitignore
+__pycache__/
+docker-compose.yml
+Dockerfile
+common/docker-compose/mysql
